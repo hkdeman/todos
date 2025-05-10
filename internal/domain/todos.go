@@ -2,6 +2,7 @@ package domain
 
 import (
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -38,7 +39,6 @@ func (l *Todos) Update(id uuid.UUID, completed bool, description string) *Todo {
 	}
 	todo := (*l)[index]
 	todo.Update(completed, description)
-
 	return todo
 }
 
@@ -77,6 +77,122 @@ func (l *Todos) Reorder(ids []uuid.UUID) []*Todo {
 	}
 	copy(*l, newTodos)
 	return newTodos
+}
+
+// GetByCategory returns todos in the specified category
+func (l *Todos) GetByCategory(category string) []*Todo {
+	list := make([]*Todo, 0)
+	for _, todo := range *l {
+		if todo.Category == category {
+			list = append(list, todo)
+		}
+	}
+	return list
+}
+
+// GetByTag returns todos with the specified tag
+func (l *Todos) GetByTag(tag string) []*Todo {
+	list := make([]*Todo, 0)
+	for _, todo := range *l {
+		for _, t := range todo.Tags {
+			if t == tag {
+				list = append(list, todo)
+				break
+			}
+		}
+	}
+	return list
+}
+
+// GetByPriority returns todos with the specified priority
+func (l *Todos) GetByPriority(priority Priority) []*Todo {
+	list := make([]*Todo, 0)
+	for _, todo := range *l {
+		if todo.Priority == priority {
+			list = append(list, todo)
+		}
+	}
+	return list
+}
+
+// GetByDueDate returns todos due between start and end dates
+func (l *Todos) GetByDueDate(start, end time.Time) []*Todo {
+	list := make([]*Todo, 0)
+	for _, todo := range *l {
+		if todo.DueDate != nil && !todo.DueDate.Before(start) && !todo.DueDate.After(end) {
+			list = append(list, todo)
+		}
+	}
+	return list
+}
+
+// GetByAssignee returns todos assigned to the specified user
+func (l *Todos) GetByAssignee(userID uuid.UUID) []*Todo {
+	list := make([]*Todo, 0)
+	for _, todo := range *l {
+		if todo.AssignedTo != nil && *todo.AssignedTo == userID {
+			list = append(list, todo)
+		}
+	}
+	return list
+}
+
+// GetRecurring returns all recurring todos
+func (l *Todos) GetRecurring() []*Todo {
+	list := make([]*Todo, 0)
+	for _, todo := range *l {
+		if todo.Recurring != nil {
+			list = append(list, todo)
+		}
+	}
+	return list
+}
+
+// GetArchived returns all archived todos
+func (l *Todos) GetArchived() []*Todo {
+	list := make([]*Todo, 0)
+	for _, todo := range *l {
+		if todo.Archived {
+			list = append(list, todo)
+		}
+	}
+	return list
+}
+
+// GetSubtasks returns all subtasks for a given parent todo
+func (l *Todos) GetSubtasks(parentID uuid.UUID) []*Todo {
+	list := make([]*Todo, 0)
+	for _, todo := range *l {
+		if todo.ParentID != nil && *todo.ParentID == parentID {
+			list = append(list, todo)
+		}
+	}
+	return list
+}
+
+// GetOverdue returns all overdue todos
+func (l *Todos) GetOverdue() []*Todo {
+	list := make([]*Todo, 0)
+	now := time.Now()
+	for _, todo := range *l {
+		if todo.DueDate != nil && todo.DueDate.Before(now) && !todo.Completed {
+			list = append(list, todo)
+		}
+	}
+	return list
+}
+
+// GetUpcoming returns todos due in the next specified number of days
+func (l *Todos) GetUpcoming(days int) []*Todo {
+	list := make([]*Todo, 0)
+	now := time.Now()
+	end := now.AddDate(0, 0, days)
+	for _, todo := range *l {
+		if todo.DueDate != nil && !todo.DueDate.Before(now) && !todo.DueDate.After(end) {
+			list = append(list, todo)
+		}
+	}
+	return list
 }
 
 // indexOf returns the index of the todo with the given id or -1 if not found

@@ -1,11 +1,14 @@
 package todos
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/stackus/todos/internal/domain"
 	"github.com/stackus/todos/internal/templates/pages"
 	"github.com/stackus/todos/internal/templates/partials"
 )
@@ -26,10 +29,30 @@ type (
 		Delete(w http.ResponseWriter, r *http.Request)
 		// Sort : POST /todos/sort
 		Sort(w http.ResponseWriter, r *http.Request)
+		// CreateTodo : POST /todos/create
+		CreateTodo(w http.ResponseWriter, r *http.Request)
+		// AddSubtask : POST /todos/add-subtask
+		AddSubtask(w http.ResponseWriter, r *http.Request)
+		// AddComment : POST /todos/add-comment
+		AddComment(w http.ResponseWriter, r *http.Request)
 	}
 
 	handler struct {
 		service Service
+	}
+
+	// New request/response types
+	CreateTodoRequest struct {
+		Description string     `json:"description"`
+		DueDate     *time.Time `json:"dueDate,omitempty"`
+		Priority    int        `json:"priority"`
+		Category    string     `json:"category,omitempty"`
+		Tags        []string   `json:"tags,omitempty"`
+	}
+
+	CommentRequest struct {
+		Content string `json:"content"`
+		UserID  string `json:"userId"`
 	}
 )
 
@@ -49,6 +72,9 @@ func Mount(r chi.Router, h Handler) {
 			r.Post("/delete", h.Delete)
 		})
 		r.Post("/sort", h.Sort)
+		r.Post("/create", h.CreateTodo)
+		r.Post("/add-subtask", h.AddSubtask)
+		r.Post("/add-comment", h.AddComment)
 	})
 }
 
@@ -205,6 +231,76 @@ func (h handler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (h handler) CreateTodo(w http.ResponseWriter, r *http.Request) {
+	var req CreateTodoRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	todo, err := h.service.AddWithDetails(r.Context(), req.Description, req.DueDate,
+		domain.Priority(req.Priority), req.Category, req.Tags)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(todo)
+}
+
+func (h handler) AddSubtask(w http.ResponseWriter, r *http.Request) {
+	parentID := r.URL.Query().Get("parentId")
+	parentUUID, err := uuid.Parse(parentID)
+	if err != nil {
+		http.Error(w, "Invalid parent ID", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	subtask, err := h.service.AddSubtask(r.Context(), parentUUID, req.Description)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(subtask)
+}
+
+func (h handler) AddComment(w http.ResponseWriter, r *http.Request) {
+	todoID := r.URL.Query().Get("todoId")
+	todoUUID, err := uuid.Parse(todoID)
+	if err != nil {
+		http.Error(w, "Invalid todo ID", http.StatusBadRequest)
+		return
+	}
+
+	var req CommentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userUUID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.AddComment(r.Context(), todoUUID, req.Content, userUUID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func isHTMX(r *http.Request) bool {
